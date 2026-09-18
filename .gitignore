@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+
+# Secrets — every .env stays local
+.env
+*.env
+!*.env.example
+
+# Desktop build output
+desktop/dist/
+download/
+
+# OS noise
+.DS_Store
+Thumbs.db
