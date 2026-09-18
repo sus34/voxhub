@@ -2,8 +2,9 @@
 
 [![build](https://github.com/sus34/voxhub/actions/workflows/build.yml/badge.svg)](https://github.com/sus34/voxhub/actions/workflows/build.yml)
 
-Самописный голосовой сервер со стримом экрана на 5 человек — свой Discord,
-развёрнутый на собственном VPS.
+Свой Discord для компании из 5 человек: один ставит и запускает сервер у себя
+на компьютере, остальные просто подключаются к нему по ссылке — голос, чат
+и демонстрация экрана идут через его машину, без аренды VPS и без сторонних серверов.
 
 `WebRTC` · `LiveKit SFU` · `Node.js` · `React` · `Electron` · `Docker` · `nginx` · `Let's Encrypt`
 
