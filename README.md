@@ -1,5 +1,7 @@
 # voxhub
 
+[![build](https://github.com/sus34/voxhub/actions/workflows/build.yml/badge.svg)](https://github.com/sus34/voxhub/actions/workflows/build.yml)
+
 Самописный голосовой сервер со стримом экрана на 5 человек — свой Discord,
 развёрнутый на собственном VPS.
 
