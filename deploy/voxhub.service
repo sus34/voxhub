@@ -1,0 +1,22 @@
+[Unit]
+Description=voxhub token server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/voxhub/server
+EnvironmentFile=/opt/voxhub/server/.env
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=3
+User=root
+
+# The box is already tight on RAM; don't let a leak take the whole server down.
+MemoryMax=512M
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=voxhub
+
+[Install]
+WantedBy=multi-user.target

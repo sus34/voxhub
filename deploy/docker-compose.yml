@@ -1,0 +1,22 @@
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: voxhub-livekit
+    restart: unless-stopped
+    # Host networking on purpose: the SFU needs a 100-port UDP range, and
+    # docker's userland proxy would add NAT overhead and mangle ICE candidates.
+    network_mode: host
+    command: --config /etc/livekit.yaml --node-ip ${VOXHUB_NODE_IP:?set VOXHUB_NODE_IP in deploy/.env}
+    # LIVEKIT_KEYS and VOXHUB_NODE_IP live here, outside version control.
+    env_file:
+      - .env
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+      # TURN needs the TLS cert. Mount the whole letsencrypt tree because
+      # live/ holds symlinks into archive/ — mounting only live/ breaks them.
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
