@@ -1,0 +1,32 @@
+{
+  "name": "voxhub-desktop",
+  "version": "0.2.0",
+  "private": true,
+  "description": "voxhub desktop",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win portable --publish never"
+  },
+  "build": {
+    "appId": "ru.voxhub.desktop",
+    "productName": "voxhub",
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json",
+      "icon.png"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "icon.png"
+    },
+    "portable": {
+      "artifactName": "voxhub.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3"
+  }
+}
