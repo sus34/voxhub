@@ -1,0 +1,98 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  web:
+    name: Клиент
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Установить зависимости
+        working-directory: web
+        run: npm ci
+
+      - name: Собрать
+        working-directory: web
+        run: npm run build
+
+      - name: Проверить, что сборка не пустая
+        working-directory: web
+        run: |
+          test -f dist/index.html
+          test -d dist/assets
+          echo "bundle: $(du -sh dist | cut -f1)"
+
+  server:
+    name: Сервер
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Установить зависимости
+        working-directory: server
+        run: npm ci
+
+      - name: Проверить синтаксис
+        working-directory: server
+        run: |
+          node --check src/index.js
+          node --check src/config.js
+
+      - name: Сервер стартует и отдаёт /api/config
+        working-directory: server
+        env:
+          LIVEKIT_API_KEY: APItest
+          LIVEKIT_API_SECRET: test-secret-for-ci-only
+          LIVEKIT_URL: wss://example.invalid
+          SERVER_PASSWORD: ci-password
+          PORT: 3999
+        run: |
+          node src/index.js &
+          PID=$!
+          for i in $(seq 1 20); do
+            curl -sf http://127.0.0.1:3999/api/config && break
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:3999/api/config | grep -q general
+          kill $PID
+
+  secrets:
+    name: Секреты не утекли
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A committed .env is the one mistake that matters in this repo.
+      - name: Ни одного .env в трекинге
+        run: |
+          if git ls-files | grep -E '(^|/)\.env$'; then
+            echo "::error::.env попал в репозиторий"
+            exit 1
+          fi
+          echo "ok: только .env.example"
+
+      - name: Нет ключей LiveKit в конфигах
+        run: |
+          if grep -rnE '^\s*keys:\s*$' -A2 deploy/livekit.yaml | grep -qE 'API[A-Za-z0-9]{8,}'; then
+            echo "::error::ключ LiveKit в livekit.yaml"
+            exit 1
+          fi
+          echo "ok: ключи только в env"
