@@ -1,32 +1,44 @@
 import { useEffect, useState } from 'react';
-import { Room as LKRoom, Track } from 'livekit-client';
+import { Track } from 'livekit-client';
 import { MIC_MODES } from './quality.js';
 import MicLevel from './MicLevel.jsx';
+import { KINDS, deviceError, listDevices } from './devices.js';
 
-export default function Settings({ room, participants, micMode, onMicMode, onClose }) {
+const LABELS = {
+  audioinput: { title: 'Микрофон', unnamed: 'Микрофон', none: 'Микрофон не найден' },
+  audiooutput: { title: 'Наушники / колонки', unnamed: 'Вывод звука', none: 'Нет устройств вывода' },
+  videoinput: { title: 'Камера', unnamed: 'Камера', none: 'Камера не найдена' },
+};
+
+/**
+ * App settings: voice mode and devices. Per-person volume is not here — it
+ * lives on right-click, next to the person.
+ */
+export default function Settings({ room, micMode, onMicMode, onClose }) {
   const micPub = room && room.localParticipant
     ? room.localParticipant.getTrackPublication(Track.Source.Microphone)
     : null;
   const micTrack = micPub ? micPub.track : null;
 
   const [devices, setDevices] = useState({ audioinput: [], audiooutput: [], videoinput: [] });
-  const [active, setActive] = useState({ audioinput: '', audiooutput: '', videoinput: '' });
-  const [volumes, setVolumes] = useState({});
+  const [active, setActive] = useState(() => {
+    const out = {};
+    for (const kind of KINDS) {
+      const id = room ? room.getActiveDevice(kind) : '';
+      out[kind] = id && id !== 'default' ? id : '';
+    }
+    return out;
+  });
   const [error, setError] = useState('');
 
   useEffect(() => {
     let alive = true;
     async function load() {
       try {
-        const [mics, speakers, cams] = await Promise.all([
-          LKRoom.getLocalDevices('audioinput'),
-          LKRoom.getLocalDevices('audiooutput'),
-          LKRoom.getLocalDevices('videoinput'),
-        ]);
-        if (!alive) return;
-        setDevices({ audioinput: mics, audiooutput: speakers, videoinput: cams });
+        const list = await listDevices();
+        if (alive) setDevices(list);
       } catch (e) {
-        if (alive) setError('Не вижу устройства: ' + e.message);
+        if (alive) setError(deviceError('Устройства', e));
       }
     }
     load();
@@ -39,29 +51,49 @@ export default function Settings({ room, participants, micMode, onMicMode, onClo
 
   async function pickDevice(kind, deviceId) {
     if (!room) return;
+    setError('');
     try {
-      await room.switchActiveDevice(kind, deviceId);
+      if (deviceId) {
+        await room.switchActiveDevice(kind, deviceId);
+      } else if (kind === 'videoinput') {
+        // Cameras have no 'default' entry — "по умолчанию" means the first one.
+        await room.switchActiveDevice(kind, devices.videoinput[0].deviceId);
+      } else {
+        // Not exact: a system without a 'default' entry just gets any device.
+        await room.switchActiveDevice(kind, 'default', false);
+      }
       setActive((a) => ({ ...a, [kind]: deviceId }));
     } catch (e) {
-      setError('Не переключилось: ' + e.message);
+      setError(deviceError(LABELS[kind].title, e));
     }
   }
 
-  // Volume is per remote participant, and microphone / screen audio are
-  // separate sources — handy when someone's game is louder than their voice.
-  function setVolume(participant, source, value) {
-    participant.setVolume(value, source);
-    setVolumes((v) => ({ ...v, [`${participant.identity}:${source}`]: value }));
-  }
+  function deviceSelect(kind) {
+    const list = devices[kind];
+    const { title, unnamed, none } = LABELS[kind];
+    // A remembered id for a device that has since been unplugged.
+    const value = list.some((d) => d.deviceId === active[kind]) ? active[kind] : '';
 
-  function volumeOf(participant, source) {
-    const key = `${participant.identity}:${source}`;
-    if (key in volumes) return volumes[key];
-    const current = participant.getVolume ? participant.getVolume(source) : undefined;
-    return current === undefined ? 1 : current;
+    return (
+      <label key={kind}>
+        {title}
+        {list.length === 0 ? (
+          <select disabled value="">
+            <option value="">{none}</option>
+          </select>
+        ) : (
+          <select value={value} onChange={(e) => pickDevice(kind, e.target.value)}>
+            <option value="">По умолчанию</option>
+            {list.map((d, i) => (
+              <option key={d.deviceId} value={d.deviceId}>
+                {d.label || `${unnamed} ${i + 1}`}
+              </option>
+            ))}
+          </select>
+        )}
+      </label>
+    );
   }
-
-  const remotes = participants.filter((p) => p !== room?.localParticipant);
 
   return (
     <div className="settings-overlay" onClick={onClose}>
@@ -95,96 +127,12 @@ export default function Settings({ room, participants, micMode, onMicMode, onClo
 
         <section>
           <h4>Устройства</h4>
-
-          <label>
-            Микрофон
-            <select
-              value={active.audioinput}
-              onChange={(e) => pickDevice('audioinput', e.target.value)}
-            >
-              <option value="">По умолчанию</option>
-              {devices.audioinput.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label || 'Микрофон'}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Наушники / колонки
-            <select
-              value={active.audiooutput}
-              onChange={(e) => pickDevice('audiooutput', e.target.value)}
-            >
-              <option value="">По умолчанию</option>
-              {devices.audiooutput.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label || 'Вывод звука'}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Камера
-            <select
-              value={active.videoinput}
-              onChange={(e) => pickDevice('videoinput', e.target.value)}
-            >
-              <option value="">По умолчанию</option>
-              {devices.videoinput.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label || 'Камера'}
-                </option>
-              ))}
-            </select>
-          </label>
+          {KINDS.map(deviceSelect)}
         </section>
 
-        <section>
-          <h4>Громкость участников</h4>
-          {remotes.length === 0 ? (
-            <p className="muted">Кроме тебя никого нет.</p>
-          ) : (
-            remotes.map((p) => (
-              <div key={p.identity} className="vol-row">
-                <span className="vol-name">{p.identity}</span>
-
-                <label className="vol">
-                  <span>голос</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="2"
-                    step="0.05"
-                    value={volumeOf(p, Track.Source.Microphone)}
-                    onChange={(e) =>
-                      setVolume(p, Track.Source.Microphone, Number(e.target.value))
-                    }
-                  />
-                </label>
-
-                <label className="vol">
-                  <span>экран</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="2"
-                    step="0.05"
-                    value={volumeOf(p, Track.Source.ScreenShareAudio)}
-                    onChange={(e) =>
-                      setVolume(p, Track.Source.ScreenShareAudio, Number(e.target.value))
-                    }
-                  />
-                </label>
-              </div>
-            ))
-          )}
-          <p className="settings-note">
-            До 200% — если кого-то еле слышно, можно вытянуть выше нормы.
-          </p>
-        </section>
+        <p className="settings-note">
+          Громкость отдельного человека — правой кнопкой по нему, до 200%.
+        </p>
       </div>
     </div>
   );
