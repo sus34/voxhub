@@ -177,3 +177,44 @@ export function CloseIcon() {
     </svg>
   );
 }
+
+/** Window with the left panel marked — show / hide the sidebar. */
+export function PanelLeftIcon() {
+  return (
+    <svg {...base}>
+      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+      <line x1="9" y1="4" x2="9" y2="20" />
+    </svg>
+  );
+}
+
+/** Window with a right column — dock the chat to the right. */
+export function DockRightIcon() {
+  return (
+    <svg {...base}>
+      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+      <line x1="15" y1="4" x2="15" y2="20" />
+    </svg>
+  );
+}
+
+/** Window with a bottom strip — dock the chat under the call. */
+export function DockBottomIcon() {
+  return (
+    <svg {...base}>
+      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+      <line x1="3" y1="14" x2="21" y2="14" />
+    </svg>
+  );
+}
+
+/** Arrow into a tray — an update is waiting. */
+export function DownloadIcon() {
+  return (
+    <svg {...base}>
+      <path d="M12 3v12" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+    </svg>
+  );
+}
