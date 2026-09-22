@@ -132,7 +132,14 @@ export default function Controls({
           {!chatOpen && unread > 0 ? <span className="unread">{unread}</span> : null}
         </button>
 
-        <button className="ctl" onClick={onOpenSettings} type="button" title="Настройки">
+        {/* App settings live in the sidebar; on a phone the sidebar is gone,
+            so the gear comes back here. */}
+        <button
+          className="ctl mobile-only"
+          onClick={onOpenSettings}
+          type="button"
+          title="Настройки"
+        >
           <GearIcon />
         </button>
 

@@ -8,7 +8,19 @@ import Settings from './Settings.jsx';
 import ParticipantGrid from './ParticipantGrid.jsx';
 import ParticipantMenu from './ParticipantMenu.jsx';
 import SourcePicker from './SourcePicker.jsx';
-import { CloseIcon, ExpandIcon, LiveDot, LogoMark } from './Icons.jsx';
+import Splitter from './Splitter.jsx';
+import {
+  CloseIcon,
+  DownloadIcon,
+  ExpandIcon,
+  GearIcon,
+  LiveDot,
+  LogoMark,
+  PanelLeftIcon,
+} from './Icons.jsx';
+import { applySavedVolumes } from './volumes.js';
+import { deviceError } from './devices.js';
+import { LAYOUT_DEFAULTS, useLayout, useMediaQuery } from './layout.js';
 import {
   STREAM_PRESETS,
   DEFAULT_PRESET,
@@ -22,7 +34,13 @@ import {
 
 const isDesktop = typeof window !== 'undefined' && !!window.voxhub;
 
-export default function Room({ session, rooms, onSwitchRoom, onLeave, switching }) {
+const DEVICE_NAMES = { audioinput: 'Микрофон', videoinput: 'Камера', audiooutput: 'Вывод звука' };
+
+const CHAT_MIN = { bottom: 140, right: 260 };
+// Leave the call at least this much room, whatever the chat wants.
+const STAGE_MIN = { bottom: 200, right: 320 };
+
+export default function Room({ session, rooms, onSwitchRoom, onLeave, switching, updates = [] }) {
   const [room, setRoom] = useState(null);
   const [status, setStatus] = useState('connecting');
   const [error, setError] = useState('');
@@ -44,32 +62,38 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching 
   const [messages, setMessages] = useState([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [menu, setMenu] = useState(null);
-  const [update, setUpdate] = useState(null);
+  // Non-fatal problems (no camera, mic busy…) — a toast, not the error screen.
+  const [notice, setNotice] = useState('');
+  const [audioBlocked, setAudioBlocked] = useState(false);
+
+  const [layout, updateLayout] = useLayout();
+  const narrow = useMediaQuery('(max-width: 760px)');
+  const chatSide = narrow ? 'bottom' : layout.chatSide;
 
   const [, bump] = useReducer((n) => n + 1, 0);
   const roomRef = useRef(null);
   const stageRef = useRef(null);
+  const areaRef = useRef(null);
+
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(''), 6000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   const chatOpenRef = useRef(chatOpen);
   useEffect(() => {
     chatOpenRef.current = chatOpen;
   }, [chatOpen]);
 
-  // Desktop update check — so a new build does not have to be hand-delivered.
-  useEffect(() => {
-    if (!isDesktop || !window.voxhub.checkUpdate) return;
-    window.voxhub
-      .checkUpdate()
-      .then((info) => {
-        if (info && info.ok && info.outdated) setUpdate(info);
-      })
-      .catch(() => {});
-  }, []);
-
   useEffect(() => {
     const r = new LKRoom({
       adaptiveStream: true,
       dynacast: true,
+      // Remote audio goes through WebAudio with a GainNode per track. Without
+      // it volume is set on the <audio> element, which throws above 1.0 — so
+      // nobody could be turned up past 100%.
+      webAudioMix: true,
       audioCaptureDefaults: MIC_MODES[micMode]?.capture ?? MIC_MODES.clear.capture,
       videoCaptureDefaults: CAMERA_CAPTURE,
     });
@@ -78,7 +102,10 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching 
 
     if (typeof window !== 'undefined') window.__voxroom = r;
 
-    r.on(RoomEvent.ParticipantConnected, bump)
+    r.on(RoomEvent.ParticipantConnected, (p) => {
+      applySavedVolumes(p);
+      bump();
+    })
       .on(RoomEvent.ParticipantDisconnected, bump)
       .on(RoomEvent.TrackSubscribed, bump)
       .on(RoomEvent.TrackUnsubscribed, bump)
@@ -93,7 +120,12 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching 
       .on(RoomEvent.Reconnecting, () => setStatus('reconnecting'))
       .on(RoomEvent.Reconnected, () => setStatus('connected'))
       .on(RoomEvent.Disconnected, () => setStatus('disconnected'))
-      .on(RoomEvent.MediaDevicesError, (e) => setError('Устройство: ' + e.message))
+      // Used to go to setError, i.e. the full "Не подключиться" screen — so
+      // pressing the camera button without a camera threw you out of the call.
+      .on(RoomEvent.MediaDevicesError, (e, kind) =>
+        setNotice(deviceError(DEVICE_NAMES[kind] ?? 'Устройство', e)),
+      )
+      .on(RoomEvent.AudioPlaybackStatusChanged, () => setAudioBlocked(!r.canPlaybackAudio))
       .on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
         if (topic !== 'chat') return;
         let parsed;
@@ -120,6 +152,8 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching 
     r.connect(session.url, session.token)
       .then(() => {
         if (cancelled) return;
+        r.remoteParticipants.forEach(applySavedVolumes);
+        setAudioBlocked(!r.canPlaybackAudio);
         setStatus('connected');
         setRoom(r);
         setPendingRoom(null);
@@ -166,7 +200,11 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching 
   const toggleMic = useCallback(async () => {
     if (!localParticipant) return;
     const mode = MIC_MODES[micMode] ?? MIC_MODES.clear;
-    await localParticipant.setMicrophoneEnabled(!micOn, mode.capture, mode.publish);
+    try {
+      await localParticipant.setMicrophoneEnabled(!micOn, mode.capture, mode.publish);
+    } catch (e) {
+      setNotice(deviceError('Микрофон', e));
+    }
     bump();
   }, [localParticipant, micOn, micMode]);
 
@@ -176,8 +214,12 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching 
       localStorage.setItem('voxhub.micMode', key);
       if (micOn && localParticipant) {
         const mode = MIC_MODES[key];
-        await localParticipant.setMicrophoneEnabled(false);
-        await localParticipant.setMicrophoneEnabled(true, mode.capture, mode.publish);
+        try {
+          await localParticipant.setMicrophoneEnabled(false);
+          await localParticipant.setMicrophoneEnabled(true, mode.capture, mode.publish);
+        } catch (e) {
+          setNotice(deviceError('Микрофон', e));
+        }
         bump();
       }
     },
@@ -186,7 +228,11 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching 
 
   const toggleCam = useCallback(async () => {
     if (!localParticipant) return;
-    await localParticipant.setCameraEnabled(!camOn, CAMERA_CAPTURE, CAMERA_PUBLISH);
+    try {
+      await localParticipant.setCameraEnabled(!camOn, CAMERA_CAPTURE, CAMERA_PUBLISH);
+    } catch (e) {
+      setNotice(deviceError('Камера', e));
+    }
     bump();
   }, [localParticipant, camOn]);
 
@@ -208,7 +254,8 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching 
           { ...preset.publish, ...SCREEN_AUDIO_PUBLISH },
         );
       } catch (e) {
-        if (e && e.name !== 'NotAllowedError') setError(e.message);
+        // NotAllowedError is just "cancel" in the browser's share dialog.
+        if (e && e.name !== 'NotAllowedError') setNotice(deviceError('Показ экрана', e));
       }
       bump();
     },
@@ -296,7 +343,7 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching 
     const el = stageRef.current;
     if (!el) return;
     if (document.fullscreenElement) document.exitFullscreen();
-    else el.requestFullscreen().catch((e) => setError('Полный экран: ' + e.message));
+    else el.requestFullscreen().catch((e) => setNotice('Полный экран: ' + e.message));
   }, []);
 
   // Double-click the video is the gesture people already expect.
@@ -332,93 +379,193 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching 
 
   const wantsSwitch = pendingRoom && pendingRoom !== session.room;
 
+  const statusText = {
+    connected: 'на связи',
+    connecting: 'подключаюсь…',
+    reconnecting: 'связь рвётся…',
+    disconnected: 'отключено',
+  }[status];
+
+  const chatSize = chatSide === 'right' ? layout.chatWidth : layout.chatHeight;
+  const setChatSize = (v) =>
+    updateLayout(chatSide === 'right' ? { chatWidth: v } : { chatHeight: v });
+  const resetChatSize = () =>
+    setChatSize(chatSide === 'right' ? LAYOUT_DEFAULTS.chatWidth : LAYOUT_DEFAULTS.chatHeight);
+  // Box of the stage area: 16px padding each side / top, 14px for the handle.
+  const chatMaxFor = (box) =>
+    chatSide === 'right'
+      ? box.width - 32 - 14 - STAGE_MIN.right
+      : box.height - 16 - 14 - STAGE_MIN.bottom;
+
   return (
-    <div className="app">
-      <aside className="sidebar">
-        <div className="brand">
-          <LogoMark />
-          voxhub
-        </div>
-
-        {update && (
+    <div className={'app' + (layout.sidebarHidden ? ' sidebar-hidden' : '')}>
+      {layout.sidebarHidden ? (
+        <aside className="rail">
           <button
-            className="update-banner"
-            onClick={() => window.voxhub.openDownload(update.url)}
+            className="rail-btn"
+            onClick={() => updateLayout({ sidebarHidden: false })}
             type="button"
+            title="Показать панель"
           >
-            <b>Есть обновление {update.latest}</b>
-            <span>у тебя {update.current} — нажми, чтобы скачать</span>
+            <PanelLeftIcon />
           </button>
-        )}
 
-        <div className="channels">
-          {rooms.map((r) => {
-            const isCurrent = r === session.room;
-            const isPending = r === pendingRoom && !isCurrent;
-            return (
-              <button
-                key={r}
-                className={'channel' + (isCurrent ? ' active' : '') + (isPending ? ' pending' : '')}
-                onClick={() => setPendingRoom(isCurrent ? null : r)}
-              >
-                <span className="hash">#</span>
-                {r}
-                {isCurrent && <span className="here">ты тут</span>}
-              </button>
-            );
-          })}
-        </div>
-
-        {wantsSwitch && (
-          <div className="switch-bar">
-            <span className="switch-text">
-              Перейти в <b>#{pendingRoom}</b>?
-            </span>
-            <span className="switch-note">Из #{session.room} тебя отключит.</span>
-            <div className="switch-actions">
-              <button
-                className="switch-go"
-                onClick={() => onSwitchRoom(pendingRoom)}
-                disabled={switching}
-              >
-                {switching ? 'Перехожу…' : 'Подключиться'}
-              </button>
-              <button className="switch-cancel" onClick={() => setPendingRoom(null)}>
-                Отмена
-              </button>
-            </div>
+          <div className="rail-members">
+            {participants.map((p) => {
+              const screen = p.getTrackPublication(Track.Source.ScreenShare);
+              const isLive = !!(screen && screen.track);
+              return (
+                <span
+                  key={p.identity}
+                  className={
+                    'rail-member' +
+                    (speakers.has(p.identity) ? ' speaking' : '') +
+                    (isLive ? ' live' : '')
+                  }
+                  title={isLive ? `${p.identity} — в эфире` : p.identity}
+                  onClick={() => isLive && setWatching(p.identity)}
+                  onContextMenu={(e) => openMenu(e, p)}
+                >
+                  <span className="avatar">{p.identity.slice(0, 1).toUpperCase()}</span>
+                </span>
+              );
+            })}
           </div>
-        )}
 
-        <div className="members">
-          <div className="members-title">В канале — {participants.length}</div>
-          {participants.map((p) => {
-            const screen = p.getTrackPublication(Track.Source.ScreenShare);
-            const isLive = !!(screen && screen.track);
-            return (
-              <div
-                key={p.identity}
-                className={'member' + (speakers.has(p.identity) ? ' speaking' : '')}
-                onClick={() => isLive && setWatching(p.identity)}
-                onContextMenu={(e) => openMenu(e, p)}
-              >
-                <span className="avatar">{p.identity.slice(0, 1).toUpperCase()}</span>
-                <span className="member-name">{p.identity}</span>
-                {isLive ? <span className="badge">live</span> : null}
+          <span className={'rail-status ' + status} title={statusText} />
+
+          {updates.length > 0 && (
+            <button
+              className="rail-btn has-update"
+              onClick={updates[0].run}
+              type="button"
+              title={updates.map((u) => `${u.title} — ${u.action.toLowerCase()}`).join('\n')}
+            >
+              <DownloadIcon />
+            </button>
+          )}
+
+          <button
+            className="rail-btn"
+            onClick={() => setSettingsOpen(true)}
+            type="button"
+            title="Настройки"
+          >
+            <GearIcon />
+          </button>
+        </aside>
+      ) : (
+        <aside className="sidebar">
+          <div className="brand">
+            <LogoMark />
+            voxhub
+            <button
+              className="brand-btn"
+              onClick={() => updateLayout({ sidebarHidden: true })}
+              type="button"
+              title="Скрыть панель"
+            >
+              <PanelLeftIcon />
+            </button>
+          </div>
+
+          {/* After the top-right card is closed, so the update isn't forgotten. */}
+          {updates.map((u) => (
+            <button
+              key={u.key}
+              className="update-banner"
+              onClick={u.run}
+              type="button"
+              title={`${u.title}. ${u.hint}`}
+            >
+              <b>{u.short}</b>
+              <span className="update-banner-go">{u.action}</span>
+            </button>
+          ))}
+
+          <div className="channels">
+            {rooms.map((r) => {
+              const isCurrent = r === session.room;
+              const isPending = r === pendingRoom && !isCurrent;
+              return (
+                <button
+                  key={r}
+                  className={'channel' + (isCurrent ? ' active' : '') + (isPending ? ' pending' : '')}
+                  onClick={() => setPendingRoom(isCurrent ? null : r)}
+                >
+                  <span className="hash">#</span>
+                  {r}
+                  {isCurrent && <span className="here">ты тут</span>}
+                </button>
+              );
+            })}
+          </div>
+
+          {wantsSwitch && (
+            <div className="switch-bar">
+              <span className="switch-text">
+                Перейти в <b>#{pendingRoom}</b>?
+              </span>
+              <span className="switch-note">Из #{session.room} тебя отключит.</span>
+              <div className="switch-actions">
+                <button
+                  className="switch-go"
+                  onClick={() => onSwitchRoom(pendingRoom)}
+                  disabled={switching}
+                >
+                  {switching ? 'Перехожу…' : 'Подключиться'}
+                </button>
+                <button className="switch-cancel" onClick={() => setPendingRoom(null)}>
+                  Отмена
+                </button>
               </div>
-            );
-          })}
-        </div>
+            </div>
+          )}
 
-        <div className={'status ' + status}>
-          {status === 'connected' ? 'соединение в норме' : null}
-          {status === 'connecting' ? 'подключаюсь…' : null}
-          {status === 'reconnecting' ? 'переподключаюсь…' : null}
-          {status === 'disconnected' ? 'отключено' : null}
-        </div>
-      </aside>
+          <div className="members">
+            <div className="members-title">В канале — {participants.length}</div>
+            {participants.map((p) => {
+              const screen = p.getTrackPublication(Track.Source.ScreenShare);
+              const isLive = !!(screen && screen.track);
+              return (
+                <div
+                  key={p.identity}
+                  className={'member' + (speakers.has(p.identity) ? ' speaking' : '')}
+                  onClick={() => isLive && setWatching(p.identity)}
+                  onContextMenu={(e) => openMenu(e, p)}
+                >
+                  <span className="avatar">{p.identity.slice(0, 1).toUpperCase()}</span>
+                  <span className="member-name">{p.identity}</span>
+                  {isLive ? <span className="badge">live</span> : null}
+                </div>
+              );
+            })}
+          </div>
 
-      <main className={chatOpen ? 'stage-area with-chat' : 'stage-area'}>
+          {/* Discord-style user panel: who you are, the connection, app settings. */}
+          <div className="me-bar">
+            <span className="avatar">{session.name.slice(0, 1).toUpperCase()}</span>
+            <span className="me-info">
+              <span className="me-name">{session.name}</span>
+              <span className={'status ' + status}>{statusText}</span>
+            </span>
+            <button
+              className="me-btn"
+              onClick={() => setSettingsOpen(true)}
+              type="button"
+              title="Настройки"
+            >
+              <GearIcon />
+            </button>
+          </div>
+        </aside>
+      )}
+
+      <main
+        ref={areaRef}
+        className={'stage-area' + (chatOpen ? ' chat-' + chatSide : '')}
+        style={{ '--chat-h': layout.chatHeight + 'px', '--chat-w': layout.chatWidth + 'px' }}
+      >
         <div className="top-view">
           {stage ? (
             <div className="stage" ref={stageRef}>
@@ -469,11 +616,55 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching 
         </div>
 
         {chatOpen && (
-          <div className="chat-dock">
-            <Chat messages={messages} onSend={sendMessage} />
-          </div>
+          <>
+            <Splitter
+              side={chatSide}
+              size={chatSize}
+              min={CHAT_MIN[chatSide]}
+              maxFor={chatMaxFor}
+              onResize={setChatSize}
+              onReset={resetChatSize}
+              containerRef={areaRef}
+            />
+            <div className="chat-dock">
+              <Chat
+                messages={messages}
+                onSend={sendMessage}
+                side={chatSide}
+                onToggleSide={
+                  narrow
+                    ? null
+                    : () => updateLayout({ chatSide: chatSide === 'right' ? 'bottom' : 'right' })
+                }
+              />
+            </div>
+          </>
         )}
       </main>
+
+      {(notice || audioBlocked) && (
+        <div className="toasts">
+          {audioBlocked && room && (
+            <button
+              className="toast action"
+              type="button"
+              onClick={() =>
+                room
+                  .startAudio()
+                  .then(() => setAudioBlocked(!room.canPlaybackAudio))
+                  .catch(() => {})
+              }
+            >
+              Браузер придержал звук — нажми, чтобы слышать остальных
+            </button>
+          )}
+          {notice && (
+            <button className="toast" type="button" onClick={() => setNotice('')}>
+              {notice}
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="audio-sinks">
         {room
@@ -510,7 +701,6 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching 
       {settingsOpen && (
         <Settings
           room={room}
-          participants={participants}
           micMode={micMode}
           onMicMode={changeMicMode}
           onClose={() => setSettingsOpen(false)}

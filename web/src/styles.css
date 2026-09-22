@@ -191,6 +191,90 @@ button {
   cursor: not-allowed;
 }
 
+/* remembered device: who you are instead of name + password */
+
+.login-who {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 11px 11px 13px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.login-who .avatar {
+  width: 36px;
+  height: 36px;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.login-who-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.login-who-name small {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-dim);
+  text-transform: none;
+}
+
+.login-card .login-forget {
+  background: none;
+  color: var(--ink-dim);
+  padding: 7px 11px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: var(--r-sm);
+  flex: none;
+}
+
+.login-card .login-forget:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.login-card .login-keep {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.login-card .login-keep input {
+  margin: 3px 0 0;
+  padding: 0;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  accent-color: var(--mint);
+}
+
+.login-keep small {
+  display: block;
+  margin-top: 3px;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--ink-dim);
+}
+
 /* ---------- shell ---------- */
 
 .app {
@@ -203,6 +287,10 @@ button {
     'sidebar controls';
   gap: 0;
   padding: 0;
+}
+
+.app.sidebar-hidden {
+  grid-template-columns: 64px 1fr;
 }
 
 .sidebar {
@@ -228,6 +316,33 @@ button {
 .brand svg {
   color: var(--ink);
   flex: none;
+}
+
+.brand-btn {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  color: var(--ink-faint);
+  transition: background 0.16s, color 0.16s;
+}
+
+.brand-btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.brand-btn svg,
+.me-btn svg,
+.chat-head-btn svg {
+  width: 18px;
+  height: 18px;
+  color: inherit;
 }
 
 .channels {
@@ -283,15 +398,15 @@ button {
 }
 
 .update-banner {
-  margin: 14px 0 0;
-  padding: 11px 13px;
+  margin: 0 0 10px;
+  padding: 9px 9px 9px 13px;
   background: var(--surface-2);
   border: none;
   border-radius: var(--r-md);
   box-shadow: inset 0 0 0 1px var(--line);
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 10px;
   text-align: left;
   transition: background 0.16s;
 }
@@ -301,15 +416,124 @@ button {
 }
 
 .update-banner b {
-  color: var(--mint);
+  flex: 1;
+  min-width: 0;
+  color: var(--ink);
   font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.update-banner .update-banner-go {
+  flex: none;
+  padding: 5px 10px;
+  border-radius: var(--r-sm);
+  background: var(--mint);
+  color: #17231d;
+  font-size: 11.5px;
   font-weight: 700;
 }
 
-.update-banner span {
-  color: var(--ink-dim);
-  font-size: 11.5px;
+/* top-right card: a new exe or a new interface is out */
+
+.update-toast {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 85;
+  width: min(340px, calc(100vw - 32px));
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 12px 14px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+  animation: fadeUp 0.24s ease both;
+}
+
+.update-toast-icon {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-md);
+  background: var(--mint);
+  color: #17231d;
+}
+
+.update-toast-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.update-toast-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.update-toast-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.update-toast-item b {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.update-toast-item span {
+  font-size: 12px;
   font-weight: 500;
+  color: var(--ink-dim);
+  line-height: 1.4;
+}
+
+.update-toast-go {
+  margin-top: 8px;
+  align-self: flex-start;
+  padding: 7px 14px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: var(--mint);
+  color: #17231d;
+  font-size: 12.5px;
+  font-weight: 700;
+  transition: background 0.16s;
+}
+
+.update-toast-go:hover {
+  background: #b9e5d0;
+}
+
+.update-toast-close {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-faint);
+  transition: background 0.16s, color 0.16s;
+}
+
+.update-toast-close:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.update-toast-close svg {
+  width: 16px;
+  height: 16px;
 }
 
 .switch-bar {
@@ -464,35 +688,181 @@ button {
   border-radius: 5px;
 }
 
+/* user panel at the bottom of the sidebar: you, the connection, settings */
+
+.me-bar {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 12px 0 14px;
+  padding: 9px 9px 9px 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+
+.me-bar .avatar {
+  color: var(--ink);
+}
+
+.me-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.me-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.me-btn {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: var(--surface-2);
+  border: none;
+  border-radius: var(--r-sm);
+  color: var(--ink-dim);
+  transition: background 0.16s, color 0.16s;
+}
+
+.me-btn:hover {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
 .status {
-  padding: 16px 6px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--ink-dim);
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.status::before {
+.status::before,
+.rail-status {
   content: '';
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--dot);
   flex: none;
 }
 
 .status.connecting::before,
-.status.reconnecting::before {
+.status.reconnecting::before,
+.rail-status.connecting,
+.rail-status.reconnecting {
   background: var(--ochre);
   animation: pulse 1s ease-in-out infinite;
 }
 
-.status.disconnected::before {
+.status.disconnected::before,
+.rail-status.disconnected {
   background: var(--coral);
+}
+
+/* collapsed sidebar: a thin rail that keeps people and settings in reach */
+
+.rail {
+  grid-area: sidebar;
+  background: var(--sidebar);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-height: 0;
+  padding: 16px 0 14px;
+}
+
+.rail-btn {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--ink-dim);
+  transition: background 0.16s, color 0.16s;
+}
+
+.rail-btn:hover {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
+.rail-btn.has-update {
+  background: var(--mint);
+  border-color: transparent;
+  color: #17231d;
+}
+
+.rail-btn.has-update:hover {
+  background: #b9e5d0;
+}
+
+.rail-members {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.rail-member {
+  position: relative;
+  cursor: default;
+}
+
+.rail-member.live {
+  cursor: pointer;
+}
+
+.rail-member .avatar {
+  width: 36px;
+  height: 36px;
+  font-size: 13.5px;
+  color: var(--ink);
+  transition: box-shadow 0.16s;
+}
+
+.rail-member.live .avatar {
+  box-shadow: 0 0 0 2px var(--sidebar), 0 0 0 4px var(--coral);
+}
+
+.rail-member.speaking .avatar::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--dot);
+  border: 2px solid var(--sidebar);
 }
 
 /* ---------- stage ---------- */
@@ -500,15 +870,74 @@ button {
 .stage-area {
   grid-area: stage;
   display: grid;
-  grid-template-rows: 1fr;
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   padding: 16px 16px 0;
-  gap: 14px;
 }
 
-.stage-area.with-chat {
-  grid-template-rows: 1fr 210px;
+/* The chat size comes from the drag handle (--chat-h / --chat-w, set inline).
+   min() keeps the call visible when the window shrinks below what was set. */
+.stage-area.chat-bottom {
+  grid-template-rows: minmax(0, 1fr) 14px max(120px, min(var(--chat-h), calc(100% - 214px)));
+}
+
+.stage-area.chat-right {
+  grid-template-columns: minmax(0, 1fr) 14px max(240px, min(var(--chat-w), calc(100% - 334px)));
+}
+
+/* drag handle between the call and the chat */
+
+.splitter {
+  display: grid;
+  place-items: center;
+  touch-action: none;
+  outline: none;
+}
+
+.splitter.h {
+  cursor: row-resize;
+}
+
+.splitter.v {
+  cursor: col-resize;
+}
+
+.splitter::before {
+  content: '';
+  border-radius: 999px;
+  background: var(--line);
+  transition: background 0.16s;
+}
+
+.splitter.h::before {
+  width: 44px;
+  height: 4px;
+}
+
+.splitter.v::before {
+  width: 4px;
+  height: 44px;
+}
+
+.splitter:hover::before,
+.splitter.dragging::before,
+.splitter:focus-visible::before {
+  background: var(--mint);
+}
+
+/* While dragging, the cursor must not flicker over video or text. */
+body.resizing-y,
+body.resizing-y * {
+  cursor: row-resize !important;
+  user-select: none;
+}
+
+body.resizing-x,
+body.resizing-x * {
+  cursor: col-resize !important;
+  user-select: none;
 }
 
 .top-view {
@@ -753,7 +1182,8 @@ button {
 .chat-dock {
   min-height: 0;
   display: flex;
-  overflow: hidden;
+  /* visible, so the emoji picker can open over the call when the chat is short */
+  overflow: visible;
 }
 
 .chat {
@@ -765,12 +1195,34 @@ button {
 }
 
 .chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 26px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-dim);
   flex: none;
+}
+
+.chat-head-btn {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  color: var(--ink-faint);
+  transition: background 0.16s, color 0.16s;
+}
+
+.chat-head-btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
 }
 
 .chat-list {
@@ -814,16 +1266,23 @@ button {
   color: var(--mint);
 }
 
+/* Shift+Enter line breaks survive into the message. */
+.msg-text {
+  white-space: pre-wrap;
+}
+
 .msg.system .msg-text {
   color: var(--ochre);
   font-size: 12.5px;
 }
 
 .chat-input {
+  position: relative;
   display: flex;
   gap: 10px;
   padding: 8px 10px 8px 12px;
-  align-items: center;
+  /* The buttons stay on the last line while the box grows upward. */
+  align-items: flex-end;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -838,8 +1297,14 @@ button {
   color: var(--ink);
   padding: 6px 0;
   font: 500 13.5px var(--ui);
-  max-height: 80px;
+  /* After the font shorthand, which resets it to `normal` — with this font
+     that is 1px taller than the row and showed a scrollbar on an empty box. */
+  line-height: 1.4;
+  /* Height is set from JS: grows with the text up to 4 lines, then scrolls
+     (and follows the caret) without a scrollbar, the way it did before. */
+  overflow-y: hidden;
   outline: none;
+  scrollbar-width: none;
 }
 
 .chat-input textarea::placeholder {
@@ -862,6 +1327,7 @@ button {
 }
 
 .emoji-toggle:hover,
+.emoji-toggle.open,
 .chat-send:hover:not(:disabled) {
   color: var(--ink);
   background: var(--surface-2);
@@ -875,29 +1341,105 @@ button {
   opacity: 0.35;
 }
 
-.emoji-grid {
-  display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: 2px;
-  padding: 10px 12px;
+/* emoji picker: opens above the input, over the chat (or the call) */
+
+.emoji-pop {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 40;
+  width: min(360px, 100%);
+  height: 320px;
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  animation: fadeUp 0.18s ease both;
+}
+
+.emoji-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line-soft);
   flex: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.emoji-tab {
+  flex: none;
+  width: 34px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  font-size: 17px;
+  line-height: 1;
+  opacity: 0.55;
+  transition: background 0.14s, opacity 0.14s;
+}
+
+.emoji-tab:hover {
+  opacity: 1;
+  background: var(--surface-2);
+}
+
+.emoji-tab.active {
+  opacity: 1;
+  background: var(--surface-3);
+}
+
+.emoji-scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 8px 10px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-3) transparent;
+}
+
+.emoji-cat {
+  position: sticky;
+  top: -4px;
+  z-index: 1;
+  padding: 8px 4px 6px;
+  background: var(--surface);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  gap: 2px;
 }
 
 .emoji {
+  height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
   background: none;
   border: none;
-  font-size: 17px;
-  padding: 3px;
-  border-radius: 6px;
-  transition: background 0.14s, transform 0.14s;
+  border-radius: var(--r-sm);
+  font-size: 22px;
+  line-height: 1;
+  transition: background 0.12s;
 }
 
 .emoji:hover {
   background: var(--surface-2);
-  transform: scale(1.15);
 }
 
 /* ---------- control bar: two grouped blocks ---------- */
@@ -979,6 +1521,10 @@ button {
 
 .ctl.danger:hover {
   color: var(--coral);
+}
+
+.ctl.mobile-only {
+  display: none;
 }
 
 .unread {
@@ -1478,22 +2024,64 @@ button {
   accent-color: var(--mint);
 }
 
+/* ---------- toasts ---------- */
+
+.toasts {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 10px 15px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  color: var(--ochre);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  animation: fadeUp 0.2s ease both;
+}
+
+.toast.action {
+  background: var(--mint);
+  border-color: transparent;
+  color: #17231d;
+}
+
 /* ---------- phone ---------- */
 
 @media (max-width: 760px) {
-  .app {
+  .app,
+  .app.sidebar-hidden {
     grid-template-columns: 1fr;
     grid-template-areas:
       'stage'
       'controls';
   }
 
-  .sidebar {
+  .sidebar,
+  .rail {
     display: none;
   }
 
-  .stage-area.with-chat {
-    grid-template-rows: 1fr 180px;
+  .ctl.mobile-only {
+    display: grid;
+  }
+
+  .stage-area.chat-bottom {
+    grid-template-rows: minmax(0, 1fr) 14px max(120px, min(var(--chat-h), 45%));
   }
 
   .pgrid,
@@ -1503,9 +2091,5 @@ button {
 
   .controls {
     flex-wrap: wrap;
-  }
-
-  .emoji-grid {
-    grid-template-columns: repeat(8, 1fr);
   }
 }
