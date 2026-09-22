@@ -31,6 +31,9 @@ export const config = {
 
   tokenTtl: process.env.TOKEN_TTL ?? '12h',
 
+  // How long "remember me" lasts. Sliding: every login through it renews it.
+  rememberDays: Number(process.env.REMEMBER_DAYS ?? 90),
+
   // Version the desktop app compares itself against.
   desktopVersion: process.env.DESKTOP_VERSION ?? '0.1.0',
 };

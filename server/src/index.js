@@ -1,4 +1,4 @@
-import { timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
@@ -38,6 +38,46 @@ function passwordMatches(given) {
 
 const NAME_RE = /^[\p{L}\p{N} _.-]{1,24}$/u;
 
+// "Remember me" without a user database: after one password login the client
+// gets a signed ticket with its name and an expiry, and trades it for access
+// next time. The password itself never gets stored on the device.
+//
+// The signing key is derived from the server password, so changing
+// SERVER_PASSWORD signs every remembered device out at once — the right
+// reaction if the password ever leaks.
+const rememberKey = createHmac('sha256', config.livekitApiSecret)
+  .update('voxhub-remember:' + config.serverPassword)
+  .digest();
+
+function signRemember(name) {
+  const payload = Buffer.from(
+    JSON.stringify({ n: name, exp: Date.now() + config.rememberDays * 86_400_000 }),
+  ).toString('base64url');
+  const sig = createHmac('sha256', rememberKey).update(payload).digest('base64url');
+  return `${payload}.${sig}`;
+}
+
+/** Returns the name the ticket was issued to, or null if it is forged or expired. */
+function verifyRemember(ticket) {
+  if (typeof ticket !== 'string' || ticket.length > 512) return null;
+  const [payload, sig] = ticket.split('.');
+  if (!payload || !sig) return null;
+
+  const expected = createHmac('sha256', rememberKey).update(payload).digest();
+  const given = Buffer.from(sig, 'base64url');
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
+
+  let data;
+  try {
+    data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+  if (typeof data.n !== 'string' || !NAME_RE.test(data.n)) return null;
+  if (!(data.exp > Date.now())) return null;
+  return data.n;
+}
+
 app.get('/api/config', (_req, res) => {
   res.json({ rooms: config.rooms });
 });
@@ -68,14 +108,26 @@ app.post('/api/join', async (req, res) => {
     return res.status(429).json({ error: 'Слишком много попыток, подожди 10 минут' });
   }
 
-  const { name, password, room } = req.body ?? {};
+  const { name, password, room, remember } = req.body ?? {};
 
-  if (!passwordMatches(password)) {
-    return res.status(401).json({ error: 'Неверный пароль' });
+  let who;
+  if (remember !== undefined) {
+    // A remembered device: the name comes from the ticket, not from the body,
+    // so a ticket cannot be reused to join under someone else's name.
+    who = verifyRemember(remember);
+    if (!who) {
+      return res.status(401).json({ error: 'Вход устарел — введи пароль ещё раз', expired: true });
+    }
+  } else {
+    if (!passwordMatches(password)) {
+      return res.status(401).json({ error: 'Неверный пароль' });
+    }
+    if (typeof name !== 'string' || !NAME_RE.test(name)) {
+      return res.status(400).json({ error: 'Имя: 1-24 символа, буквы/цифры/пробел/._-' });
+    }
+    who = name;
   }
-  if (typeof name !== 'string' || !NAME_RE.test(name)) {
-    return res.status(400).json({ error: 'Имя: 1-24 символа, буквы/цифры/пробел/._-' });
-  }
+
   if (!config.rooms.includes(room)) {
     return res.status(400).json({ error: 'Нет такого канала' });
   }
@@ -83,8 +135,8 @@ app.post('/api/join', async (req, res) => {
   attempts.delete(ip);
 
   const at = new AccessToken(config.livekitApiKey, config.livekitApiSecret, {
-    identity: name,
-    name,
+    identity: who,
+    name: who,
     ttl: config.tokenTtl,
   });
   at.addGrant({
@@ -95,7 +147,15 @@ app.post('/api/join', async (req, res) => {
     canPublishData: true,
   });
 
-  res.json({ token: await at.toJwt(), url: config.livekitUrl, room, name });
+  // A fresh ticket on every join keeps the expiry sliding: people who use it
+  // regularly never see the password prompt again.
+  res.json({
+    token: await at.toJwt(),
+    url: config.livekitUrl,
+    room,
+    name: who,
+    remember: signRemember(who),
+  });
 });
 
 // Serve the built client if it exists; in dev the Vite server handles this.
