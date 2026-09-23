@@ -14,3 +14,9 @@ download/
 # OS noise
 .DS_Store
 Thumbs.db
+
+# Server data (SQLite) — never commit a database
+server/data/
+*.db
+*.db-wal
+*.db-shm
