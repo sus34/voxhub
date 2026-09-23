@@ -87,9 +87,9 @@ export function useUpdates() {
 const REJOIN_KEY = 'voxhub.rejoin';
 
 /** Reload into the new interface and come straight back to this channel. */
-export function reloadInto(room) {
+export function reloadInto(channelId) {
   try {
-    if (room) sessionStorage.setItem(REJOIN_KEY, room);
+    if (channelId) sessionStorage.setItem(REJOIN_KEY, channelId);
   } catch {
     /* then it just lands on the login screen */
   }

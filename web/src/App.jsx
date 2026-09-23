@@ -1,152 +1,171 @@
 import { useCallback, useEffect, useState } from 'react';
-import Login from './Login.jsx';
 import Room from './Room.jsx';
+import { ErrorScreen, InviteSignUp, Lobby, Setup, SignIn } from './Auth.jsx';
 import UpdateToast, { updateItems } from './UpdateToast.jsx';
 import { takeRejoin, useUpdates } from './updates.js';
-
-const REMEMBER_KEY = 'voxhub.remember';
-
-function readStored(key) {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function writeStored(key, value) {
-  try {
-    if (value == null) localStorage.removeItem(key);
-    else localStorage.setItem(key, value);
-  } catch {
-    /* private window or blocked storage — just don't remember */
-  }
-}
+import { api, inviteCodeFromPath } from './api.js';
 
 export default function App() {
-  const [rooms, setRooms] = useState([]);
-  // How to get back in when switching channels: a remember ticket, or the
-  // password kept in memory only for this run.
-  const [creds, setCreds] = useState(null);
-  const [session, setSession] = useState(null); // { token, url, room, name }
+  // What the server says about itself and about us: /api/state.
+  const [state, setState] = useState(null);
+  const [bootError, setBootError] = useState('');
+  const [path, setPath] = useState(() => location.pathname);
+  const [session, setSession] = useState(null); // { token, url, channel, userId, name }
   const [switching, setSwitching] = useState(false);
-  const [error, setError] = useState('');
-  const [remembered, setRemembered] = useState(() => {
-    const ticket = readStored(REMEMBER_KEY);
-    const name = readStored('voxhub.name');
-    return ticket && name ? { ticket, name } : null;
-  });
+  const [notice, setNotice] = useState('');
+
   const updates = useUpdates();
   // Closing the card hides what it showed, not whatever comes later.
   const [dismissed, setDismissed] = useState([]);
 
-  useEffect(() => {
-    fetch('/api/config')
-      .then((r) => r.json())
-      .then((c) => setRooms(c.rooms))
-      .catch(() => setRooms(['general']));
+  const navigate = useCallback((to) => {
+    history.replaceState(null, '', to);
+    setPath(to);
   }, []);
 
-  const forget = useCallback(() => {
-    writeStored(REMEMBER_KEY, null);
-    setRemembered(null);
+  const refresh = useCallback(async () => {
+    const s = await api('/api/state');
+    setState(s);
+    setBootError('');
+    return s;
   }, []);
 
-  /**
-   * Either { name, password, keep } for a first login, or { ticket } for a
-   * remembered device. Both come back with a fresh ticket.
-   */
   const join = useCallback(
-    async ({ name, password, keep, ticket, room }) => {
-      const body = ticket ? { remember: ticket, room } : { name, password, room };
-      const res = await fetch('/api/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        if (data.expired) forget();
-        throw new Error(data.error ?? 'Не удалось подключиться');
-      }
-
-      const shouldKeep = ticket ? true : keep;
-      if (shouldKeep && data.remember) {
-        writeStored(REMEMBER_KEY, data.remember);
-        setRemembered({ ticket: data.remember, name: data.name });
-        setCreds({ ticket: data.remember });
-      } else {
-        if (!ticket) forget();
-        setCreds({ name, password });
-      }
-
-      writeStored('voxhub.name', data.name);
-      writeStored('voxhub.room', data.room);
-      setSession(data);
-    },
-    [forget],
-  );
-
-  // Swap the session straight to the new room instead of clearing it first:
-  // clearing unmounted the whole UI and flashed the login screen mid-switch.
-  const switchRoom = useCallback(
-    async (room) => {
-      if (!creds || switching) return;
-      setSwitching(true);
-      setError('');
+    async (channelId) => {
       try {
-        await join({ ...creds, room });
+        const data = await api('/api/join', { method: 'POST', body: { channelId } });
+        try {
+          localStorage.setItem('voxhub.channel', channelId);
+        } catch {
+          /* just not remembered */
+        }
+        setNotice('');
+        setSession(data);
       } catch (e) {
-        setError(e.message);
-      } finally {
-        setSwitching(false);
+        // Session gone (logged out elsewhere, or banned): back to sign-in.
+        if (e.status === 401) {
+          setSession(null);
+          await refresh();
+        }
+        throw e;
       }
     },
-    [creds, join, switching],
+    [refresh],
   );
 
-  const leave = useCallback(() => {
-    setSession(null);
-    setCreds(null);
-  }, []);
-
-  // Back from "Обновить" in the update card: straight into the same channel.
   useEffect(() => {
-    const room = takeRejoin();
-    if (room && remembered) {
-      join({ ticket: remembered.ticket, room }).catch((e) => setError(e.message));
+    // The pre-accounts "remember me" ticket is dead weight now.
+    try {
+      localStorage.removeItem('voxhub.remember');
+    } catch {
+      /* fine */
     }
+
+    const rejoin = takeRejoin();
+    refresh()
+      .then((s) => {
+        // Back from "Обновить" in the update card: straight into the same channel.
+        if (rejoin && s.me && s.channels.some((c) => c.id === rejoin)) {
+          join(rejoin).catch((e) => setNotice(e.message));
+        }
+      })
+      .catch((e) => setBootError(e.message));
     // Once, on start.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const items = updateItems(updates, session ? session.room : null);
+  const inviteCode = inviteCodeFromPath(path);
+
+  // Opened an invite while already on the server: nothing to do there.
+  useEffect(() => {
+    if (state?.me && inviteCode) navigate('/');
+  }, [state, inviteCode, navigate]);
+
+  const switchRoom = useCallback(
+    async (channelId) => {
+      if (switching) return;
+      setSwitching(true);
+      try {
+        await join(channelId);
+      } catch (e) {
+        setNotice(e.message);
+      } finally {
+        setSwitching(false);
+      }
+    },
+    [join, switching],
+  );
+
+  const authed = useCallback(async () => {
+    navigate('/');
+    await refresh();
+  }, [navigate, refresh]);
+
+  const logout = useCallback(async () => {
+    try {
+      await api('/api/logout', { method: 'POST' });
+    } catch {
+      /* the cookie is gone either way once the server forgets it */
+    }
+    setSession(null);
+    await refresh();
+  }, [refresh]);
+
+  const kicked = useCallback(async () => {
+    setSession(null);
+    setNotice('Тебя выгнали из звонка');
+    // A ban also closed our session — refresh shows the sign-in screen then.
+    await refresh().catch(() => {});
+  }, [refresh]);
+
+  const items = updateItems(updates, session ? session.channel : null);
   // Card first; once it's closed, the reminder moves to the sidebar.
   const fresh = items.filter((it) => !dismissed.includes(it.key));
   const later = items.filter((it) => dismissed.includes(it.key));
 
+  let screen = null;
+  if (bootError) {
+    screen = <ErrorScreen message={bootError} onRetry={() => refresh().catch((e) => setBootError(e.message))} />;
+  } else if (!state) {
+    screen = null; // a blink; nothing worth a spinner
+  } else if (state.needsSetup) {
+    screen = <Setup onDone={authed} />;
+  } else if (!state.me) {
+    screen = inviteCode ? (
+      <InviteSignUp code={inviteCode} onDone={authed} onSignIn={() => navigate('/')} />
+    ) : (
+      <SignIn spaceName={state.space?.name} onDone={authed} notice={notice} />
+    );
+  } else if (!session) {
+    screen = (
+      <Lobby
+        me={state.me}
+        spaceName={state.space.name}
+        channels={state.channels}
+        onJoin={join}
+        onLogout={logout}
+        notice={notice}
+      />
+    );
+  } else {
+    screen = (
+      <Room
+        session={session}
+        channels={state.channels}
+        me={state.me}
+        switching={switching}
+        onSwitchRoom={switchRoom}
+        onLeave={() => setSession(null)}
+        onKicked={kicked}
+        onLogout={logout}
+        updates={later}
+      />
+    );
+  }
+
   return (
     <>
-      {session ? (
-        <Room
-          session={session}
-          rooms={rooms}
-          switching={switching}
-          onSwitchRoom={switchRoom}
-          onLeave={leave}
-          updates={later}
-        />
-      ) : (
-        <Login
-          rooms={rooms}
-          onJoin={join}
-          remembered={remembered}
-          onForget={forget}
-          externalError={error}
-        />
-      )}
-
+      {screen}
       <UpdateToast
         items={fresh}
         onDismiss={() => setDismissed((d) => [...d, ...fresh.map((it) => it.key)])}

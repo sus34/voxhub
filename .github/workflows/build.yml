@@ -52,26 +52,30 @@ jobs:
 
       - name: Проверить синтаксис
         working-directory: server
-        run: |
-          node --check src/index.js
-          node --check src/config.js
+        run: for f in src/*.js; do node --check "$f"; done
 
-      - name: Сервер стартует и отдаёт /api/config
+      - name: Тесты API
+        working-directory: server
+        run: npm test
+
+      - name: Сервер стартует на пустой базе и просит настройку
         working-directory: server
         env:
           LIVEKIT_API_KEY: APItest
           LIVEKIT_API_SECRET: test-secret-for-ci-only
           LIVEKIT_URL: wss://example.invalid
-          SERVER_PASSWORD: ci-password
+          DATA_DIR: ${{ runner.temp }}/voxhub-data
           PORT: 3999
         run: |
-          node src/index.js &
+          node src/index.js > server.log 2>&1 &
           PID=$!
           for i in $(seq 1 20); do
-            curl -sf http://127.0.0.1:3999/api/config && break
+            curl -sf http://127.0.0.1:3999/api/state && break
             sleep 0.5
           done
-          curl -sf http://127.0.0.1:3999/api/config | grep -q general
+          curl -sf http://127.0.0.1:3999/api/state | grep -q '"needsSetup":true'
+          grep -q 'код настройки' server.log
+          test -f "$DATA_DIR/voxhub.db"
           kill $PID
 
   secrets:
@@ -88,6 +92,15 @@ jobs:
             exit 1
           fi
           echo "ok: только .env.example"
+
+      # The SQLite file holds password hashes and sessions.
+      - name: Ни одной базы в трекинге
+        run: |
+          if git ls-files | grep -E '\.(db|db-wal|db-shm|sqlite)$'; then
+            echo "::error::база данных попала в репозиторий"
+            exit 1
+          fi
+          echo "ok: баз нет"
 
       - name: Нет ключей LiveKit в конфигах
         run: |

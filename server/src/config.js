@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import path from 'node:path';
 
 function required(name) {
   const value = process.env[name];
@@ -10,6 +11,8 @@ function required(name) {
   return value;
 }
 
+const livekitUrl = required('LIVEKIT_URL');
+
 export const config = {
   port: Number(process.env.PORT ?? 3000),
 
@@ -18,21 +21,33 @@ export const config = {
   livekitApiSecret: required('LIVEKIT_API_SECRET'),
 
   // Public websocket URL of the SFU, e.g. wss://vox.example.com
-  livekitUrl: required('LIVEKIT_URL'),
+  livekitUrl,
 
-  // Single shared password for the whole server. Five friends, no user database.
-  serverPassword: required('SERVER_PASSWORD'),
+  // Where the server talks to LiveKit's API (to kick people). On the same box
+  // that is the local port; by default derived from the public URL.
+  livekitApiUrl:
+    process.env.LIVEKIT_API_URL ?? livekitUrl.replace(/^ws(s?):\/\//, 'http$1://'),
 
-  // Fixed channel list, Discord style.
-  rooms: (process.env.ROOMS ?? 'general,games,music')
+  // The SQLite file lives here. Back it up and you have backed up the server.
+  dataDir: path.resolve(process.env.DATA_DIR ?? './data'),
+
+  // Channels created when the server is first set up; after that they live in
+  // the database.
+  seedChannels: (process.env.ROOMS ?? 'general,games,music')
     .split(',')
     .map((r) => r.trim())
     .filter(Boolean),
 
-  tokenTtl: process.env.TOKEN_TTL ?? '12h',
+  // Short on purpose: LiveKit refreshes the token for connected clients, and
+  // a short one limits how long a banned person could reuse theirs.
+  tokenTtl: process.env.TOKEN_TTL ?? '10m',
 
-  // How long "remember me" lasts. Sliding: every login through it renews it.
-  rememberDays: Number(process.env.REMEMBER_DAYS ?? 90),
+  // How long "remember me" lasts. Sliding: using it renews it.
+  sessionDays: Number(process.env.SESSION_DAYS ?? 90),
+
+  // Fixed setup code, e.g. from an installer; otherwise one is generated and
+  // printed to the log while the server is not set up yet.
+  setupCode: process.env.SETUP_CODE || null,
 
   // Version the desktop app compares itself against.
   desktopVersion: process.env.DESKTOP_VERSION ?? '0.1.0',

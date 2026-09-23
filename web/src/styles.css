@@ -245,34 +245,33 @@ button {
   color: var(--ink);
 }
 
-.login-card .login-keep {
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: 13px;
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: normal;
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.login-card .login-keep input {
-  margin: 3px 0 0;
-  padding: 0;
-  width: 15px;
-  height: 15px;
-  flex: none;
-  accent-color: var(--mint);
-}
-
-.login-keep small {
-  display: block;
-  margin-top: 3px;
+/* small print under a field and at the bottom of the card */
+.login-card .field-hint {
   font-size: 11.5px;
   font-weight: 500;
-  line-height: 1.45;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--ink-faint);
+}
+
+.login-card .login-foot {
+  font-size: 12.5px;
   color: var(--ink-dim);
+  text-align: center;
+}
+
+.login-card .link-btn {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  color: var(--mint);
+  font-size: inherit;
+  font-weight: 700;
+}
+
+.login-card .link-btn:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
 }
 
 /* ---------- shell ---------- */
@@ -1718,6 +1717,166 @@ body.resizing-x * {
 
 .pmenu-item.accent {
   color: var(--ochre);
+}
+
+/* owner-only: kick / ban, set apart from the everyday items */
+.pmenu-mod {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.pmenu-item.danger {
+  color: var(--coral);
+}
+
+.pmenu-item.danger:hover {
+  background: rgba(233, 165, 165, 0.1);
+  color: var(--coral);
+}
+
+/* ---------- server admin (inside settings, owner only) ---------- */
+
+.invite-make {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.invite-make select {
+  flex: 1;
+  min-width: 120px;
+}
+
+.invite-go,
+.admin-btn {
+  border: none;
+  border-radius: var(--r-md);
+  font-size: 12.5px;
+  font-weight: 700;
+  transition: background 0.16s, color 0.16s;
+}
+
+.invite-go {
+  padding: 10px 14px;
+  background: var(--mint);
+  color: #17231d;
+}
+
+.invite-go:hover {
+  background: #b9e5d0;
+}
+
+.invite-fresh {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.invite-fresh input {
+  background: var(--bg);
+  border: 1px solid var(--mint);
+  border-radius: var(--r-md);
+  padding: 10px 11px;
+  color: var(--ink);
+  font: 500 12.5px ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  outline: none;
+}
+
+.invite-fresh span {
+  font-size: 11.5px;
+  color: var(--mint);
+  font-weight: 600;
+}
+
+.admin-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: var(--r-sm);
+  transition: background 0.14s;
+}
+
+.admin-row:hover {
+  background: var(--surface-2);
+}
+
+.admin-row.faded {
+  opacity: 0.5;
+}
+
+.admin-row .avatar {
+  width: 26px;
+  height: 26px;
+  font-size: 11.5px;
+  color: var(--ink);
+}
+
+.invite-code {
+  font: 600 12.5px ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+.admin-name {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.admin-meta {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--ink-dim);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-btn {
+  flex: none;
+  padding: 6px 10px;
+  background: var(--surface-2);
+  color: var(--ink-dim);
+}
+
+.admin-btn:hover {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
+.admin-btn.danger:hover {
+  color: var(--coral);
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.account-row span {
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.account-row small {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-dim);
 }
 
 /* ---------- picker & settings ---------- */

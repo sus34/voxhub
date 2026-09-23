@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Track } from 'livekit-client';
 import { MIC_MODES } from './quality.js';
 import MicLevel from './MicLevel.jsx';
+import ServerAdmin from './ServerAdmin.jsx';
 import { KINDS, deviceError, listDevices } from './devices.js';
 
 const LABELS = {
@@ -11,10 +12,11 @@ const LABELS = {
 };
 
 /**
- * App settings: voice mode and devices. Per-person volume is not here — it
- * lives on right-click, next to the person.
+ * App settings: voice mode and devices; for the owner also invites and who is
+ * on the server. Per-person volume is not here — it lives on right-click,
+ * next to the person.
  */
-export default function Settings({ room, micMode, onMicMode, onClose }) {
+export default function Settings({ room, me, micMode, onMicMode, onLogout, onClose }) {
   const micPub = room && room.localParticipant
     ? room.localParticipant.getTrackPublication(Track.Source.Microphone)
     : null;
@@ -133,6 +135,21 @@ export default function Settings({ room, micMode, onMicMode, onClose }) {
         <p className="settings-note">
           Громкость отдельного человека — правой кнопкой по нему, до 200%.
         </p>
+
+        {me.role === 'owner' && <ServerAdmin meId={me.id} />}
+
+        <section>
+          <h4>Аккаунт</h4>
+          <div className="account-row">
+            <span>
+              {me.name}
+              <small>{me.role === 'owner' ? 'владелец сервера' : 'участник'}</small>
+            </span>
+            <button className="admin-btn" onClick={onLogout} type="button">
+              Выйти из аккаунта
+            </button>
+          </div>
+        </section>
       </div>
     </div>
   );
