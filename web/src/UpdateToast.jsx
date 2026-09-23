@@ -1,19 +1,19 @@
 import { CloseIcon, DownloadIcon } from './Icons.jsx';
 import { reloadInto } from './updates.js';
 
-/** What each update is and the one button that applies it. */
-export function updateItems({ desktop, web }, room) {
+/** What each update is and the one button that applies it. `channel` is the call you're in, if any. */
+export function updateItems({ desktop, web }, channel) {
   const items = [];
   if (web) {
     items.push({
       key: 'web',
       title: 'Интерфейс обновился',
       short: 'Интерфейс обновился',
-      hint: room
-        ? `Обновится за пару секунд и вернёт тебя в #${room}`
+      hint: channel
+        ? `Обновится за пару секунд и вернёт тебя в #${channel.name}`
         : 'Обновится за секунду',
       action: 'Обновить',
-      run: () => reloadInto(room),
+      run: () => reloadInto(channel ? channel.id : null),
     });
   }
   if (desktop) {

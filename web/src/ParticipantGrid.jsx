@@ -1,6 +1,7 @@
 import { Track } from 'livekit-client';
 import { VideoTile } from './VideoTile.jsx';
 import { MicOffIcon, LiveDot } from './Icons.jsx';
+import { nameOf } from './people.js';
 
 /**
  * The default view of a channel: everyone as a tile, like Discord's voice view.
@@ -39,13 +40,13 @@ export default function ParticipantGrid({
                 />
               ) : (
                 <div className="ptile-avatar">
-                  <span>{p.identity.slice(0, 1).toUpperCase()}</span>
+                  <span>{nameOf(p).slice(0, 1).toUpperCase()}</span>
                 </div>
               )}
 
               <div className="ptile-bar">
                 <span className="ptile-name">
-                  {p.identity}
+                  {nameOf(p)}
                   {isLocal ? ' (ты)' : ''}
                 </span>
                 {!p.isMicrophoneEnabled && (

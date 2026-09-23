@@ -1,12 +1,24 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Track } from 'livekit-client';
 import { MAX_VOLUME, savedVolume, setVolume as applyVolume } from './volumes.js';
+import { nameOf } from './people.js';
 
 /**
  * Right-click menu on a participant, the way Discord does it: volume lives
- * where the person is, not buried in a settings dialog.
+ * where the person is, not buried in a settings dialog. The owner also gets
+ * kick and ban here.
  */
-export default function ParticipantMenu({ participant, x, y, isLocal, isLive, onWatch, onClose }) {
+export default function ParticipantMenu({
+  participant,
+  x,
+  y,
+  isLocal,
+  isLive,
+  canModerate,
+  onModerate,
+  onWatch,
+  onClose,
+}) {
   const ref = useRef(null);
   const [pos, setPos] = useState({ x, y });
 
@@ -69,7 +81,7 @@ export default function ParticipantMenu({ participant, x, y, isLocal, isLive, on
         style={{ left: pos.x, top: pos.y }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="pmenu-head">{participant.identity}</div>
+        <div className="pmenu-head">{nameOf(participant)}</div>
 
         {isLocal ? (
           <p className="pmenu-note">Это ты. Свою громкость крутить смысла нет.</p>
@@ -124,6 +136,31 @@ export default function ParticipantMenu({ participant, x, y, isLocal, isLive, on
           >
             Смотреть стрим
           </button>
+        )}
+
+        {canModerate && (
+          <div className="pmenu-mod">
+            <button
+              className="pmenu-item"
+              onClick={() => {
+                onClose();
+                onModerate('kick', participant);
+              }}
+              type="button"
+            >
+              Выгнать из звонка
+            </button>
+            <button
+              className="pmenu-item danger"
+              onClick={() => {
+                onClose();
+                onModerate('ban', participant);
+              }}
+              type="button"
+            >
+              Забанить
+            </button>
+          </div>
         )}
       </div>
     </div>

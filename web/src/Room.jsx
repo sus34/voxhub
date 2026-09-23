@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Room as LKRoom, RoomEvent, Track } from 'livekit-client';
+import { DisconnectReason, Room as LKRoom, RoomEvent, Track } from 'livekit-client';
+import { api } from './api.js';
+import { nameOf } from './people.js';
 import { VideoTile, AudioSink } from './VideoTile.jsx';
 import StreamStats from './StreamStats.jsx';
 import Controls from './Controls.jsx';
@@ -40,7 +42,17 @@ const CHAT_MIN = { bottom: 140, right: 260 };
 // Leave the call at least this much room, whatever the chat wants.
 const STAGE_MIN = { bottom: 200, right: 320 };
 
-export default function Room({ session, rooms, onSwitchRoom, onLeave, switching, updates = [] }) {
+export default function Room({
+  session,
+  channels,
+  me,
+  onSwitchRoom,
+  onLeave,
+  onKicked,
+  onLogout,
+  switching,
+  updates = [],
+}) {
   const [room, setRoom] = useState(null);
   const [status, setStatus] = useState('connecting');
   const [error, setError] = useState('');
@@ -86,6 +98,11 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching,
     chatOpenRef.current = chatOpen;
   }, [chatOpen]);
 
+  const onKickedRef = useRef(onKicked);
+  useEffect(() => {
+    onKickedRef.current = onKicked;
+  }, [onKicked]);
+
   useEffect(() => {
     const r = new LKRoom({
       adaptiveStream: true,
@@ -119,7 +136,12 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching,
       })
       .on(RoomEvent.Reconnecting, () => setStatus('reconnecting'))
       .on(RoomEvent.Reconnected, () => setStatus('connected'))
-      .on(RoomEvent.Disconnected, () => setStatus('disconnected'))
+      .on(RoomEvent.Disconnected, (reason) => {
+        // The owner kicked or banned us: leave the call screen instead of
+        // sitting in a dead room showing "отключено".
+        if (reason === DisconnectReason.PARTICIPANT_REMOVED) onKickedRef.current?.();
+        else setStatus('disconnected');
+      })
       // Used to go to setError, i.e. the full "Не подключиться" screen — so
       // pressing the camera button without a camera threw you out of the call.
       .on(RoomEvent.MediaDevicesError, (e, kind) =>
@@ -138,7 +160,7 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching,
           ...prev,
           {
             id: Date.now() + '-' + Math.random(),
-            from: participant ? participant.identity : '???',
+            from: participant ? nameOf(participant) : '???',
             text: String(parsed.text ?? '').slice(0, 2000),
             mine: false,
           },
@@ -365,6 +387,25 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching,
     onLeave();
   }, [onLeave]);
 
+  // Owner only — the server checks it too, the menu just doesn't offer it.
+  const moderate = useCallback(async (action, participant) => {
+    const who = nameOf(participant);
+    if (
+      action === 'ban' &&
+      !window.confirm(`Забанить ${who}? Войти не сможет, пока не разбанишь в настройках.`)
+    ) {
+      return;
+    }
+    try {
+      await api(`/api/admin/users/${encodeURIComponent(participant.identity)}/${action}`, {
+        method: 'POST',
+      });
+      setNotice(action === 'ban' ? `${who} забанен` : `${who} выгнан из звонка`);
+    } catch (e) {
+      setNotice(e.message);
+    }
+  }, []);
+
   if (error) {
     return (
       <div className="login-shell">
@@ -377,7 +418,9 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching,
     );
   }
 
-  const wantsSwitch = pendingRoom && pendingRoom !== session.room;
+  const current = session.channel;
+  const wantsSwitch = pendingRoom && pendingRoom !== current.id;
+  const pendingName = wantsSwitch ? channels.find((c) => c.id === pendingRoom)?.name : '';
 
   const statusText = {
     connected: 'на связи',
@@ -422,11 +465,11 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching,
                     (speakers.has(p.identity) ? ' speaking' : '') +
                     (isLive ? ' live' : '')
                   }
-                  title={isLive ? `${p.identity} — в эфире` : p.identity}
+                  title={isLive ? `${nameOf(p)} — в эфире` : nameOf(p)}
                   onClick={() => isLive && setWatching(p.identity)}
                   onContextMenu={(e) => openMenu(e, p)}
                 >
-                  <span className="avatar">{p.identity.slice(0, 1).toUpperCase()}</span>
+                  <span className="avatar">{nameOf(p).slice(0, 1).toUpperCase()}</span>
                 </span>
               );
             })}
@@ -484,17 +527,17 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching,
           ))}
 
           <div className="channels">
-            {rooms.map((r) => {
-              const isCurrent = r === session.room;
-              const isPending = r === pendingRoom && !isCurrent;
+            {channels.map((c) => {
+              const isCurrent = c.id === current.id;
+              const isPending = c.id === pendingRoom && !isCurrent;
               return (
                 <button
-                  key={r}
+                  key={c.id}
                   className={'channel' + (isCurrent ? ' active' : '') + (isPending ? ' pending' : '')}
-                  onClick={() => setPendingRoom(isCurrent ? null : r)}
+                  onClick={() => setPendingRoom(isCurrent ? null : c.id)}
                 >
                   <span className="hash">#</span>
-                  {r}
+                  {c.name}
                   {isCurrent && <span className="here">ты тут</span>}
                 </button>
               );
@@ -504,9 +547,9 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching,
           {wantsSwitch && (
             <div className="switch-bar">
               <span className="switch-text">
-                Перейти в <b>#{pendingRoom}</b>?
+                Перейти в <b>#{pendingName}</b>?
               </span>
-              <span className="switch-note">Из #{session.room} тебя отключит.</span>
+              <span className="switch-note">Из #{current.name} тебя отключит.</span>
               <div className="switch-actions">
                 <button
                   className="switch-go"
@@ -534,8 +577,8 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching,
                   onClick={() => isLive && setWatching(p.identity)}
                   onContextMenu={(e) => openMenu(e, p)}
                 >
-                  <span className="avatar">{p.identity.slice(0, 1).toUpperCase()}</span>
-                  <span className="member-name">{p.identity}</span>
+                  <span className="avatar">{nameOf(p).slice(0, 1).toUpperCase()}</span>
+                  <span className="member-name">{nameOf(p)}</span>
                   {isLive ? <span className="badge">live</span> : null}
                 </div>
               );
@@ -580,7 +623,7 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching,
                   <span className="live-tag">
                     <LiveDot /> LIVE
                   </span>
-                  {stage.participant.identity}
+                  {nameOf(stage.participant)}
                 </span>
                 <StreamStats
                   track={stage.track}
@@ -693,6 +736,8 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching,
           y={menu.y}
           isLocal={menu.participant === localParticipant}
           isLive={sharers.some((s) => s.participant === menu.participant)}
+          canModerate={me.role === 'owner' && menu.participant !== localParticipant}
+          onModerate={moderate}
           onWatch={setWatching}
           onClose={() => setMenu(null)}
         />
@@ -701,8 +746,10 @@ export default function Room({ session, rooms, onSwitchRoom, onLeave, switching,
       {settingsOpen && (
         <Settings
           room={room}
+          me={me}
           micMode={micMode}
           onMicMode={changeMicMode}
+          onLogout={onLogout}
           onClose={() => setSettingsOpen(false)}
         />
       )}
