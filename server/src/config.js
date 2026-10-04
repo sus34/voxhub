@@ -16,6 +16,10 @@ const livekitUrl = required('LIVEKIT_URL');
 export const config = {
   port: Number(process.env.PORT ?? 3000),
 
+  // Behind the proxy on the same box this is 127.0.0.1, so the app is not
+  // reachable from outside around it.
+  host: process.env.HOST || undefined,
+
   // LiveKit SFU credentials — must match deploy/livekit.yaml
   livekitApiKey: required('LIVEKIT_API_KEY'),
   livekitApiSecret: required('LIVEKIT_API_SECRET'),

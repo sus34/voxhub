@@ -1,0 +1,26 @@
+# The HTTPS front door. Values come from compose.yml (that is, from .env).
+{
+	# Nothing reconfigures Caddy at runtime; keep its admin port closed.
+	admin off
+	http_port {$HTTP_PORT}
+	https_port {$HTTPS_PORT}
+}
+
+{$DOMAIN}:{$HTTPS_PORT} {
+	# Where the certificate comes from: tls-auto / tls-files / tls-internal.
+	import tls-{$TLS_MODE}.caddy
+
+	# getDisplayMedia only works in a secure context; keep browsers on https.
+	header Strict-Transport-Security "max-age=31536000"
+
+	# LiveKit signalling — a long-lived websocket. Caddy passes the upgrade
+	# through and sets no read timeout, so calls don't drop every minute.
+	handle /rtc* {
+		reverse_proxy 127.0.0.1:{$LIVEKIT_PORT}
+	}
+
+	# API and the web client.
+	handle {
+		reverse_proxy 127.0.0.1:{$APP_PORT}
+	}
+}

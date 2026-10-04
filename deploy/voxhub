@@ -1,0 +1,276 @@
+#!/usr/bin/env bash
+# voxhub — everyday commands for a server installed with install.sh.
+# Lives in the install folder; install.sh links it to /usr/local/bin/voxhub.
+set -euo pipefail
+
+DIR=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
+cd "$DIR"
+
+BACKUPS="$DIR/backups"
+BACKUP_KEEP=${BACKUP_KEEP:-14}
+APP_UID=1000 # the `node` user in the app image
+
+say() { printf '\033[1m%s\033[0m\n' "$*"; }
+warn() { printf '\033[33m%s\033[0m\n' "$*" >&2; }
+die() { printf '\033[31m%s\033[0m\n' "$*" >&2; exit 1; }
+
+env_get() { sed -n "s/^$1=//p" .env 2>/dev/null | tail -n 1; }
+
+env_set() {
+  if grep -q "^$1=" .env; then
+    sed -i "s|^$1=.*|$1=$2|" .env
+  else
+    printf '%s=%s\n' "$1" "$2" >> .env
+  fi
+}
+
+compose() { docker compose "$@"; }
+
+# Temp folders, removed on exit whatever happens.
+TMPS=()
+trap 'rm -rf "${TMPS[@]}"' EXIT
+new_tmp() { TMP=$(mktemp -d); TMPS+=("$TMP"); } # sets TMP
+
+url() {
+  local port
+  port=$(env_get HTTPS_PORT)
+  if [ "${port:-443}" = 443 ]; then
+    echo "https://$(env_get DOMAIN)"
+  else
+    echo "https://$(env_get DOMAIN):$port"
+  fi
+}
+
+# Asks the site through the proxy, the way a browser would: certificate,
+# Caddy and the app all have to work for this to succeed.
+probe() {
+  local domain port insecure=()
+  domain=$(env_get DOMAIN)
+  port=$(env_get HTTPS_PORT)
+  port=${port:-443}
+  [ "$(env_get TLS_MODE)" = internal ] && insecure=(-k)
+  curl -fsS "${insecure[@]}" --max-time 5 \
+    --resolve "$domain:$port:127.0.0.1" "https://$domain:$port$1"
+}
+
+wait_ready() {
+  for _ in $(seq 1 60); do # up to 3 minutes
+    if probe /api/version > /dev/null 2>&1; then return 0; fi
+    sleep 3
+  done
+  return 1
+}
+
+fix_permissions() {
+  mkdir -p data/app data/caddy "$BACKUPS"
+  chown "$APP_UID:$APP_UID" data/app
+  chmod 700 "$BACKUPS"
+  chmod 600 .env
+}
+
+# ---------------------------------------------------------------- commands
+
+cmd_status() {
+  compose ps
+  echo
+  say "Адрес: $(url)"
+  if probe /api/state 2> /dev/null | grep -q '"needsSetup":true'; then
+    say "Сервер ещё не настроен. Код настройки: $(env_get SETUP_CODE)"
+  fi
+}
+
+cmd_logs() { compose logs --tail=200 -f "$@"; }
+
+cmd_restart() {
+  fix_permissions
+  compose up -d --force-recreate --remove-orphans
+  wait_ready || warn "Сайт пока не отвечает — смотри: voxhub logs"
+}
+
+# First start and `update`: images, then up, then wait until it all answers.
+cmd_start() {
+  fix_permissions
+  fetch_images
+  compose up -d --remove-orphans
+  wait_ready || return 1
+  # LiveKit starts once Caddy has the certificate; give it a moment.
+  for _ in $(seq 1 20); do
+    curl -fsS --max-time 3 "http://127.0.0.1:$(env_get LIVEKIT_PORT)" > /dev/null 2>&1 && return 0
+    sleep 3
+  done
+  warn "LiveKit не отвечает — смотри: voxhub logs livekit"
+  return 1
+}
+
+cmd_setup_code() {
+  if probe /api/state | grep -q '"needsSetup":true'; then
+    env_get SETUP_CODE
+  else
+    echo "Сервер уже настроен — код больше не нужен."
+  fi
+}
+
+# A consistent copy of the database plus .env, in backups/.
+cmd_backup() {
+  local quiet=${1:-} ts tmp out
+  ts=$(date +%Y%m%d-%H%M%S)
+  new_tmp; tmp=$TMP
+  mkdir -p "$BACKUPS"
+
+  if [ -n "$(compose ps -q --status running app 2> /dev/null)" ]; then
+    # Online backup through SQLite itself: safe while people are using it.
+    compose exec -T app node src/backup.js /data/.backup.db > /dev/null
+    mv data/app/.backup.db "$tmp/voxhub.db"
+  elif [ -f data/app/voxhub.db ]; then
+    cp data/app/voxhub.db "$tmp/voxhub.db" # stopped, so the file is at rest
+  else
+    warn "Базы ещё нет — сохраняю только настройки."
+  fi
+  cp .env "$tmp/env"
+
+  out="$BACKUPS/voxhub-$ts.tar.gz"
+  tar -czf "$out" -C "$tmp" .
+  chmod 600 "$out" # .env inside holds the LiveKit secret
+
+  # Keep the newest BACKUP_KEEP. (Our own file names, so ls is safe here.)
+  # shellcheck disable=SC2012
+  ls -1t "$BACKUPS"/voxhub-*.tar.gz 2> /dev/null | tail -n +"$((BACKUP_KEEP + 1))" | xargs -r rm -f
+  [ "$quiet" = --quiet ] || say "Бэкап: $out"
+}
+
+cmd_restore() {
+  local file=${1:-} tmp
+  [ -n "$file" ] || die "Какой бэкап? voxhub restore backups/voxhub-….tar.gz"
+  [ -f "$file" ] || die "Нет файла $file"
+  file=$(readlink -f "$file")
+  new_tmp; tmp=$TMP
+  tar -xzf "$file" -C "$tmp"
+  [ -f "$tmp/voxhub.db" ] || die "В $file нет базы."
+
+  if [ "${2:-}" != -y ]; then
+    read -r -p "База на сервере заменится данными из бэкапа. Продолжить? [y/N] " ok < /dev/tty
+    [ "$ok" = y ] || [ "$ok" = Y ] || die "Отменено."
+  fi
+
+  say "Сначала бэкап того, что есть сейчас…"
+  cmd_backup
+  compose stop app
+  rm -f data/app/voxhub.db-wal data/app/voxhub.db-shm
+  cp "$tmp/voxhub.db" data/app/voxhub.db
+  fix_permissions
+  compose up -d app
+  wait_ready || warn "Приложение не поднялось — смотри: voxhub logs app"
+  say "Восстановлено из $file"
+  echo "Настройки (.env) из бэкапа не трогал. Если переезжаешь на новый сервер,"
+  echo "они тут: tar -xzf $file ./env -O"
+}
+
+# Image tag for the code that is checked out: v1.2.0 → 1.2.0, a branch → its name.
+code_tag() {
+  local tag
+  if tag=$(git describe --tags --exact-match 2> /dev/null); then
+    echo "${tag#v}"
+  else
+    git rev-parse --abbrev-ref HEAD | tr '/' '-'
+  fi
+}
+
+cmd_update() {
+  local target=${1:-} before after
+  before=$(git describe --tags --always)
+
+  say "Бэкап перед обновлением…"
+  cmd_backup
+
+  say "Забираю новую версию…"
+  git fetch --quiet --tags --prune origin
+  if [ -z "$target" ]; then
+    if git symbolic-ref -q HEAD > /dev/null; then
+      target=$(git rev-parse --abbrev-ref HEAD) # follow the branch
+    else
+      target=$(git tag -l 'v*' --sort=-v:refname | head -n 1) # newest release
+    fi
+  fi
+  if git show-ref --verify --quiet "refs/remotes/origin/$target"; then
+    git checkout --quiet "$target"
+    git merge --quiet --ff-only "origin/$target" ||
+      die "Не могу обновиться: в $DIR поменяны файлы. Посмотри: git status"
+  else
+    git checkout --quiet "$target" ||
+      die "Не могу переключиться на $target: в $DIR поменяны файлы. Посмотри: git status"
+  fi
+  env_set VOXHUB_TAG "$(code_tag)"
+
+  if cmd_start; then
+    docker image prune -f > /dev/null
+    after=$(git describe --tags --always)
+    say "Готово: $before → $after"
+  else
+    die "Новая версия не отвечает. Логи: voxhub logs. Откат: voxhub update $before и voxhub restore <последний бэкап>"
+  fi
+}
+
+# Ready-made images from the registry; if the app image can't be pulled
+# (no such tag, registry unreachable), build it here from the code.
+fetch_images() {
+  compose pull --quiet caddy livekit
+  if ! compose pull --quiet app 2> /dev/null; then
+    warn "Готовый образ приложения не скачался — собираю на месте (пара минут)…"
+    compose build app
+  fi
+}
+
+# Cron, nightly: if the certificate was renewed, restart what holds the old
+# one in memory. Caddy reloads its own; LiveKit's TURN and Caddy with your
+# own files (TLS_MODE=files) don't.
+cmd_refresh_certs() {
+  local mode cert sum state=data/.cert-sum
+  mode=$(env_get TLS_MODE)
+  if [ "$mode" = files ]; then
+    cert="$(env_get TLS_DIR)/$(env_get TLS_CERT | sed 's|^/ext-certs/||')"
+  else
+    cert=$(find data/caddy/caddy/certificates -type f -path "*/$(env_get DOMAIN)/$(env_get DOMAIN).crt" 2> /dev/null | head -n 1)
+  fi
+  [ -n "$cert" ] && [ -f "$cert" ] || return 0
+  sum=$(sha256sum "$cert" | cut -d' ' -f1)
+  if [ -f "$state" ] && [ "$(cat "$state")" != "$sum" ]; then
+    if [ "$mode" = files ]; then
+      compose restart caddy livekit
+    else
+      compose restart livekit
+    fi
+    say "Сертификат обновился — перезапустил"
+  fi
+  echo "$sum" > "$state"
+}
+
+usage() {
+  cat << EOF
+voxhub — управление сервером ($DIR)
+
+  voxhub status           что запущено, адрес, код настройки
+  voxhub logs [сервис]    логи (app, livekit, caddy), Ctrl+C — выйти
+  voxhub restart          перезапуск, в том числе после правки .env
+  voxhub update [версия]  бэкап и обновление до свежей версии
+  voxhub backup           бэкап базы и настроек в backups/
+  voxhub restore <файл>   вернуть базу из бэкапа
+  voxhub setup-code       код для первого входа
+EOF
+}
+
+[ "$(id -u)" = 0 ] || die "Нужен root: sudo voxhub $*"
+[ -f .env ] || die "Нет $DIR/.env — сервер не установлен?"
+
+case "${1:-}" in
+  status) cmd_status ;;
+  logs) shift; cmd_logs "$@" ;;
+  restart) cmd_restart ;;
+  update) shift; cmd_update "$@" ;;
+  backup) shift; cmd_backup "$@" ;;
+  restore) shift; cmd_restore "$@" ;;
+  setup-code) cmd_setup_code ;;
+  start) cmd_start ;;
+  refresh-certs) cmd_refresh_certs ;;
+  -h | --help | help | "") usage ;;
+  *) usage; exit 2 ;;
+esac

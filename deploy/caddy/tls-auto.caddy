@@ -1,0 +1,5 @@
+# Let's Encrypt, obtained and renewed by Caddy. Needs port 80 or 443 of this
+# server to be reachable for the check — install.sh makes sure one of them is.
+tls {
+	issuer acme
+}

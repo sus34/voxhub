@@ -29,8 +29,8 @@ const app = createApp({
   downloadDir: path.resolve(__dirname, '../../download'),
 });
 
-app.listen(config.port, () => {
-  console.log(`[voxhub] token server on :${config.port}`);
+app.listen(config.port, config.host, () => {
+  console.log(`[voxhub] token server on ${config.host ?? ''}:${config.port}`);
   console.log(`[voxhub] SFU: ${config.livekitUrl}`);
   console.log(`[voxhub] data: ${config.dataDir}`);
   if (needsSetup()) {
