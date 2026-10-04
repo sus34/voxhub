@@ -78,6 +78,26 @@ jobs:
           test -f "$DATA_DIR/voxhub.db"
           kill $PID
 
+  scripts:
+    name: Скрипты установки
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck install.sh deploy/voxhub deploy/livekit-start.sh .github/scripts/*.sh
+
+  install:
+    name: Установка на чистый сервер
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: install.sh → настройка → звонок → бэкап → восстановление → обновление
+        run: bash .github/scripts/install-smoke.sh
+      - name: Логи, если упало
+        if: failure()
+        run: cd /opt/voxhub && sudo docker compose logs --tail=100
+
   secrets:
     name: Секреты не утекли
     runs-on: ubuntu-latest
@@ -104,7 +124,7 @@ jobs:
 
       - name: Нет ключей LiveKit в конфигах
         run: |
-          if grep -rnE '^\s*keys:\s*$' -A2 deploy/livekit.yaml | grep -qE 'API[A-Za-z0-9]{8,}'; then
+          if grep -rnE '^\s*keys:\s*$' -A2 deploy/legacy/livekit.yaml | grep -qE 'API[A-Za-z0-9]{8,}'; then
             echo "::error::ключ LiveKit в livekit.yaml"
             exit 1
           fi
