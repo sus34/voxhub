@@ -1,0 +1,84 @@
+# voxhub in one `docker compose up -d`: the SFU, the app and an HTTPS proxy
+# that gets its own certificate. Settings come from .env next to this file —
+# install.sh writes it; .env.example lists everything.
+#
+# All three use the host network:
+# - LiveKit must see the real interfaces to pick the right public IP (a box
+#   can have several) and serve UDP without docker's NAT in the way;
+# - the proxy and the app then reach it on 127.0.0.1, where its API port and
+#   the app's port stay closed to the outside.
+#
+# No fixed project name: it is the folder's, so a second install in another
+# folder (VOXHUB_DIR) doesn't touch the first.
+
+services:
+  caddy:
+    image: caddy:2.11-alpine
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      HTTPS_PORT: ${HTTPS_PORT:-443}
+      HTTP_PORT: ${HTTP_PORT:-80}
+      TLS_MODE: ${TLS_MODE:-auto}
+      TLS_CERT: ${TLS_CERT:-}
+      TLS_KEY: ${TLS_KEY:-}
+      APP_PORT: ${APP_PORT:-3000}
+      LIVEKIT_PORT: ${LIVEKIT_PORT:-7880}
+    volumes:
+      - ./deploy/caddy:/etc/caddy:ro
+      - ./data/caddy:/data
+      # Only for TLS_MODE=files: your own certificate, e.g. /etc/letsencrypt.
+      - ${TLS_DIR:-./deploy/caddy}:/ext-certs:ro
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  livekit:
+    image: livekit/livekit-server:v1.13.7
+    restart: unless-stopped
+    network_mode: host
+    # The config is generated from these variables at start — see the script.
+    entrypoint: ["/bin/sh", "/voxhub/livekit-start.sh"]
+    environment:
+      DOMAIN: ${DOMAIN}
+      NODE_IP: ${NODE_IP:?set NODE_IP in .env}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in .env}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}
+      LIVEKIT_PORT: ${LIVEKIT_PORT:-7880}
+      RTC_TCP_PORT: ${RTC_TCP_PORT:-7881}
+      RTC_UDP_PORT: ${RTC_UDP_PORT:-7882}
+      TURN_UDP_PORT: ${TURN_UDP_PORT:-3478}
+      TURN_TLS_PORT: ${TURN_TLS_PORT:-5349}
+      MAX_PARTICIPANTS: ${MAX_PARTICIPANTS:-10}
+      TLS_CERT: ${TLS_CERT:-}
+      TLS_KEY: ${TLS_KEY:-}
+    volumes:
+      - ./deploy/livekit-start.sh:/voxhub/livekit-start.sh:ro
+      # TURN over TLS needs the same certificate the proxy got.
+      - ./data/caddy:/caddy:ro
+      - ${TLS_DIR:-./deploy/caddy}:/ext-certs:ro
+    logging: *logging
+
+  app:
+    image: ghcr.io/sus34/voxhub:${VOXHUB_TAG:-main}
+    build: .
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      HOST: 127.0.0.1
+      PORT: ${APP_PORT:-3000}
+      DATA_DIR: /data
+      LIVEKIT_URL: wss://${DOMAIN}:${HTTPS_PORT:-443}
+      LIVEKIT_API_URL: http://127.0.0.1:${LIVEKIT_PORT:-7880}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      SETUP_CODE: ${SETUP_CODE:-}
+      ROOMS: ${ROOMS:-general,games,music}
+      SESSION_DAYS: ${SESSION_DAYS:-90}
+      DESKTOP_VERSION: ${DESKTOP_VERSION:-0.2.0}
+    volumes:
+      - ./data/app:/data
+    logging: *logging

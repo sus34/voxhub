@@ -1,0 +1,4 @@
+# Your own certificate (e.g. from certbot), when neither 80 nor 443 is free
+# for Caddy to get one. Renewing it is up to you; `voxhub refresh-certs`
+# (run nightly by cron) picks up the new files.
+tls {$TLS_CERT} {$TLS_KEY}

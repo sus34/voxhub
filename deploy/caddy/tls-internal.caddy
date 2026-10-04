@@ -1,0 +1,2 @@
+# Self-signed, for tests only: browsers will warn about it.
+tls internal
